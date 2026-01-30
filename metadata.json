@@ -1,0 +1,7 @@
+{
+  "name": "VeriCore Agentic Engine",
+  "description": "Enterprise-grade agentic KYC and liveness verification platform with human-in-the-loop orchestration.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
