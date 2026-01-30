@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, X, AlertCircle, Clock, ShieldCheck, User, ImageIcon, Check, Eye, ClipboardList, Filter, Send, History, MessageSquare, ArrowUpRight, UserPlus, ChevronDown } from 'lucide-react';
+import { Search, X, AlertCircle, Clock, ShieldCheck, User, ImageIcon, Check, Eye, ClipboardList, Filter, Send, History, MessageSquare, ArrowUpRight, UserPlus, ChevronDown, Landmark, ShieldAlert, ArrowRightLeft } from 'lucide-react';
 import { VerificationRecord, PlatformSettings, DocumentInfo } from '../types';
 
 interface AgentDashboardProps {
@@ -12,9 +12,7 @@ interface AgentDashboardProps {
 export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdateStatus, settings }) => {
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Approved' | 'Flagged' | 'Rejected'>('All');
-  const [taskFilter, setTaskFilter] = useState<'All' | 'My Tasks'>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [commentInput, setCommentInput] = useState('');
 
   const activeReview = records.find(r => r.id === reviewId);
 
@@ -31,7 +29,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
     return (
       <div className="flex items-center gap-2">
         <span className="text-slate-900 font-bold uppercase">{val}</span>
-        <Check className="w-3 h-3 text-indigo-500" strokeWidth={4} title="Verified" />
+        {/* Fix: Lucide icons do not accept 'title' prop directly. Removed to fix type error. */}
+        <Check className="w-3 h-3 text-indigo-500" strokeWidth={4} />
       </div>
     );
   };
@@ -89,6 +88,7 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
               <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">KYC Session</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Customer Profile</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned To</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
               </tr>
@@ -109,6 +109,14 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                           record.riskScore === 'High' ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-500'
                         }`}>{record.riskScore} Risk</span>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-2">
+                       <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 border border-slate-200">
+                          {record.assignee?.split(' ')[0][0]}{record.assignee?.split(' ')[1][0]}
+                       </div>
+                       <span className="text-[11px] font-bold text-slate-600">{record.assignee}</span>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-center">
@@ -283,7 +291,32 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                <div className="flex-[3] bg-slate-50 border-l border-slate-200 flex flex-col min-w-[340px]">
                   <div className="p-8 flex-1 overflow-y-auto space-y-10 custom-scrollbar">
                      <div>
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><History className="w-4 h-4" /> Transaction History</h4>
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><History className="w-4 h-4" /> Workflow Actions</h4>
+                        <div className="space-y-3">
+                           <button className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-indigo-600 transition-all group">
+                             <div className="flex items-center gap-3">
+                               <Landmark className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                               <span className="text-[10px] font-bold text-slate-700 uppercase">Forward to Compliance</span>
+                             </div>
+                             <ChevronDown className="w-4 h-4 text-slate-300" />
+                           </button>
+                           <button className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-indigo-600 transition-all group">
+                             <div className="flex items-center gap-3">
+                               <ShieldAlert className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                               <span className="text-[10px] font-bold text-slate-700 uppercase">Escalate to AML/Fraud</span>
+                             </div>
+                             <ChevronDown className="w-4 h-4 text-slate-300" />
+                           </button>
+                           <button className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-indigo-600 transition-all group">
+                             <div className="flex items-center gap-3">
+                               <ArrowRightLeft className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                               <span className="text-[10px] font-bold text-slate-700 uppercase">Request EDD</span>
+                             </div>
+                             <ChevronDown className="w-4 h-4 text-slate-300" />
+                           </button>
+                        </div>
+
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 mt-10 flex items-center gap-2"><History className="w-4 h-4" /> Trail</h4>
                         <div className="space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
                            {activeReview.activity?.map((act, i) => (
                              <div key={i} className="flex gap-4 relative z-10">
@@ -299,9 +332,9 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                   </div>
 
                   <div className="p-8 border-t border-slate-200 bg-white space-y-5 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] shrink-0">
-                     <textarea placeholder="Add internal notes for compliance trail..." className="w-full h-24 p-4 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-2xl focus:border-indigo-500 outline-none resize-none transition-all" />
+                     <textarea placeholder="Add compliance notes..." className="w-full h-24 p-4 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-2xl focus:border-indigo-500 outline-none resize-none transition-all" />
                      <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => { onUpdateStatus(activeReview.id, 'Approved'); setReviewId(null); }} className="py-4 bg-indigo-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all">Approve Case</button>
+                        <button onClick={() => { onUpdateStatus(activeReview.id, 'Approved'); setReviewId(null); }} className="py-4 bg-indigo-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all">Approve KYC</button>
                         <button onClick={() => { onUpdateStatus(activeReview.id, 'Rejected'); setReviewId(null); }} className="py-4 bg-rose-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest shadow-xl shadow-rose-600/20 hover:bg-rose-700 transition-all">Reject Case</button>
                      </div>
                   </div>

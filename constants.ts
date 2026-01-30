@@ -35,7 +35,7 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     selfieImage: MOCK_SELFIE_1,
     pin: '1234',
     bucketsSatisfied: ['Tax'],
-    assignee: 'Sarah L.',
+    assignee: 'Arjun S.',
     activity: [
       { action: 'Agent session initialized', time: '10:42 AM' },
       { action: 'Biometric score: 98% (Match)', time: '10:43 AM' },
@@ -68,6 +68,7 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     selfieImage: MOCK_SELFIE_2,
     pin: '5678',
     bucketsSatisfied: ['Identity', 'Address'],
+    assignee: 'Ananya K.',
     mismatches: ['Manual Review Required: Face match in 70-90% range'],
     activity: [
       { action: 'Agent session initialized', time: '11:15 AM' },
@@ -101,6 +102,7 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     selfieImage: MOCK_SELFIE_3,
     pin: '9021',
     bucketsSatisfied: ['Tax'],
+    assignee: 'Rajesh G.',
     activity: [
       { action: 'Agent session initialized', time: '09:10 AM' },
       { action: 'Biometric score: 78%', time: '09:11 AM' },
