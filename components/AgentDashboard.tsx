@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, X, AlertCircle, Clock, ShieldCheck, User, ImageIcon, Check, Eye, ClipboardList, Filter, Send, History, MessageSquare, ArrowUpRight, UserPlus, ChevronDown, Landmark, ShieldAlert, ArrowRightLeft } from 'lucide-react';
+import { Search, X, AlertCircle, Clock, ShieldCheck, User, ImageIcon, Check, Eye, ClipboardList, Filter, Send, History, MessageSquare, ArrowUpRight, UserPlus, ChevronDown, Landmark, ShieldAlert, ArrowRightLeft, Sparkles, BrainCircuit, FileStack } from 'lucide-react';
 import { VerificationRecord, PlatformSettings, DocumentInfo } from '../types';
 
 interface AgentDashboardProps {
@@ -23,16 +23,32 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
     return matchesStatus && matchesSearch;
   });
 
-  const renderDataValue = (val: string | undefined) => {
-    if (!val || val.toLowerCase() === 'null' || val === "" || val.toLowerCase() === 'unreadable' || val.toLowerCase().includes('not found') || val === 'N/A') 
-      return <span className="text-slate-400 italic text-[11px] px-2 py-0.5 bg-slate-50 rounded">NO DATA FOUND</span>;
+  const renderDataValue = (val: string | undefined, isName: boolean = false) => {
+    if (!val || val.trim() === "" || val.toLowerCase() === 'null' || val.toLowerCase() === 'unreadable' || val.toLowerCase().includes('not found') || val === 'N/A') {
+      return <span className="text-slate-400 italic text-[11px] px-2 py-0.5 bg-slate-50 rounded uppercase font-black tracking-tighter">DATA UNAVAILABLE</span>;
+    }
     return (
       <div className="flex items-center gap-2">
-        <span className="text-slate-900 font-bold uppercase">{val}</span>
-        {/* Fix: Lucide icons do not accept 'title' prop directly. Removed to fix type error. */}
-        <Check className="w-3 h-3 text-indigo-500" strokeWidth={4} />
+        <span className={`${isName ? 'text-3xl' : 'text-sm'} font-black text-slate-900 tracking-tight uppercase leading-tight`}>{val}</span>
+        <Check className="w-4 h-4 text-indigo-500 shrink-0" strokeWidth={5} />
       </div>
     );
+  };
+
+  const mapInternalKeyToLabel = (key: string) => {
+    const labels: Record<string, string> = {
+      name: 'Legal Customer Name',
+      dob: 'Birth Date',
+      gender: 'Gender',
+      address: 'Residential Address',
+      fatherName: "Father's Name",
+      motherName: "Mother's Name",
+      nationality: 'Nationality',
+      documentNumber: 'ID Reference Number',
+      issueDate: 'Issue Date',
+      expiryDate: 'Expiry Date'
+    };
+    return labels[key] || key.replace(/([A-Z])/g, ' $1').toUpperCase();
   };
 
   return (
@@ -102,7 +118,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-3">
-                      <img src={record.selfieImage} className="w-10 h-10 rounded-xl object-cover grayscale border border-slate-200 bg-white" />
+                      {/* Fix: removed grayscale filter to ensure photo "loads" visually for the user */}
+                      <img src={record.selfieImage} className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-50" />
                       <div>
                         <p className="text-xs font-bold text-slate-800 tracking-tight">{record.customerName}</p>
                         <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
@@ -180,7 +197,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                                 </div>
                              </div>
                              <div className="group relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 aspect-video flex items-center justify-center">
-                                <img src={activeReview.selfieImage} className="w-full h-full object-cover grayscale transition-transform duration-500 group-hover:scale-110" />
+                                {/* Fix: removed grayscale filter to ensure photo "loads" visually for the user */}
+                                <img src={activeReview.selfieImage} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                              </div>
                           </div>
                           
@@ -207,53 +225,58 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                           <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-8 flex items-center gap-2">
                              <User className="w-4 h-4" /> Agent-Extracted Profile
                           </h4>
-                          <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-                             <div className="col-span-2">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Legal Customer Name</p>
-                                <p className="text-2xl font-black text-slate-900 tracking-tight uppercase">{renderDataValue(activeReview.customerName)}</p>
-                             </div>
-                             
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Birth Date</p>
-                                <p className="text-sm font-bold text-slate-800">{renderDataValue(activeReview.dob)}</p>
-                             </div>
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Gender</p>
-                                <p className="text-sm font-bold text-slate-800 uppercase">{renderDataValue(activeReview.gender)}</p>
-                             </div>
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Father's Name</p>
-                                <p className="text-sm font-bold text-slate-800 uppercase">{renderDataValue(activeReview.fatherName)}</p>
-                             </div>
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Mother's Name</p>
-                                <p className="text-sm font-bold text-slate-800 uppercase">{renderDataValue(activeReview.motherName)}</p>
-                             </div>
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Nationality</p>
-                                <p className="text-sm font-bold text-slate-800 uppercase">{renderDataValue(activeReview.nationality)}</p>
-                             </div>
-                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Document Dates</p>
-                                {(Object.values(activeReview.documents) as DocumentInfo[]).map((doc, idx) => (
-                                  <div key={idx} className="space-y-1 mt-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[9px] font-black text-slate-400 uppercase">Issue:</span>
-                                      {renderDataValue(doc.issueDate)}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[9px] font-black text-slate-400 uppercase">Expiry:</span>
-                                      {renderDataValue(doc.expiryDate)}
-                                    </div>
+                          
+                          <div className="space-y-12">
+                            {/* DOCUMENT-WISE CATEGORIZATION */}
+                            {Object.entries(activeReview.documents).map(([docKey, docInfo]) => (
+                              <div key={docKey} className="animate-in fade-in duration-700 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center gap-3 mb-8">
+                                  <div className="p-2 bg-indigo-50 rounded-xl">
+                                    <FileStack className="w-4 h-4 text-indigo-600" />
                                   </div>
-                                ))}
-                             </div>
-                             <div className="col-span-2">
-                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Residential Address</p>
-                                <div className="p-4 bg-white rounded-2xl border border-slate-200 text-xs font-bold text-slate-700 leading-relaxed shadow-sm">
-                                  {renderDataValue(activeReview.address)}
+                                  <h5 className="text-[13px] font-black text-indigo-900 uppercase tracking-widest">
+                                    {docKey} Segment
+                                  </h5>
                                 </div>
-                             </div>
+
+                                <div className="space-y-8">
+                                  {/* Dynamic Field Rendering inspired by user screenshot */}
+                                  {docInfo.rawExtractedData ? (
+                                    <div className="grid grid-cols-2 gap-y-10 gap-x-6">
+                                      {Object.entries(docInfo.rawExtractedData).map(([fieldKey, value]) => {
+                                        if (!value || value.trim() === "") return null;
+                                        const isNameField = fieldKey.toLowerCase() === 'name';
+                                        const isFullWidth = fieldKey === 'address' || isNameField;
+                                        
+                                        return (
+                                          <div key={fieldKey} className={isFullWidth ? "col-span-2" : "col-span-1"}>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-tighter">
+                                              {mapInternalKeyToLabel(fieldKey)}
+                                            </p>
+                                            {renderDataValue(value, isNameField)}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="py-4">
+                                       <p className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-tighter">LEGAL CUSTOMER NAME</p>
+                                       {renderDataValue(activeReview.customerName, true)}
+                                       <div className="grid grid-cols-2 gap-4 mt-8">
+                                          <div>
+                                             <p className="text-[10px] font-black text-slate-400 uppercase mb-1">ISSUE DATE</p>
+                                             {renderDataValue(docInfo.issueDate)}
+                                          </div>
+                                          <div>
+                                             <p className="text-[10px] font-black text-slate-400 uppercase mb-1">EXPIRY DATE</p>
+                                             {renderDataValue(docInfo.expiryDate)}
+                                          </div>
+                                       </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                        </div>
 
@@ -275,10 +298,10 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                                 </p>
                              </div>
                              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-600 uppercase">PIN Challenge Result</span>
-                                <div className={`flex items-center gap-2 px-3 py-1 rounded-lg ${activeReview.pinMatch ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                                  {activeReview.pinMatch ? <Check className="w-3.5 h-3.5" strokeWidth={5} /> : <X className="w-3.5 h-3.5" strokeWidth={5} />}
-                                  <span className="text-[10px] font-black uppercase tracking-widest">{activeReview.pinMatch ? 'Match' : 'No Match'}</span>
+                                <span className="text-[10px] font-bold text-slate-600 uppercase">Liveness Gesture</span>
+                                <div className={`flex items-center gap-2 px-3 py-1 rounded-lg ${activeReview.gestureMatch ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                  {activeReview.gestureMatch ? <Check className="w-3.5 h-3.5" strokeWidth={5} /> : <X className="w-3.5 h-3.5" strokeWidth={5} />}
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{activeReview.gestureMatch ? 'Verified' : 'Failed'}</span>
                                 </div>
                              </div>
                           </div>
@@ -316,17 +339,33 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                            </button>
                         </div>
 
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 mt-10 flex items-center gap-2"><History className="w-4 h-4" /> Trail</h4>
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 mt-10 flex items-center gap-2"><Sparkles className="w-4 h-4" /> Comprehensive Trail</h4>
                         <div className="space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
-                           {activeReview.activity?.map((act, i) => (
-                             <div key={i} className="flex gap-4 relative z-10">
-                                <div className="mt-1.5 shrink-0"><div className="w-3.5 h-3.5 rounded-full border-2 border-white bg-indigo-500 shadow-sm" /></div>
-                                <div className="space-y-1">
-                                   <p className="text-[11px] font-bold text-slate-800 leading-tight">{act.action}</p>
-                                   <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{act.time}</p>
-                                </div>
-                             </div>
-                           )) || <p className="text-center text-[10px] text-slate-400 font-bold uppercase p-6 border border-dashed border-slate-200 rounded-2xl">No history records</p>}
+                           {activeReview.activity?.map((act, i) => {
+                             const isAgentReasoning = act.action.toLowerCase().includes('agent reasoning') || act.action.toLowerCase().includes('agent intelligence');
+                             return (
+                               <div key={i} className="flex gap-4 relative z-10">
+                                  <div className="mt-1.5 shrink-0">
+                                    {isAgentReasoning ? (
+                                      <div className="w-4 h-4 rounded-full border-2 border-white bg-indigo-600 flex items-center justify-center shadow-lg -ml-0.5 animate-pulse">
+                                        <BrainCircuit className="w-2 h-2 text-white" />
+                                      </div>
+                                    ) : (
+                                      <div className="w-3.5 h-3.5 rounded-full border-2 border-white bg-slate-400 shadow-sm" />
+                                    )}
+                                  </div>
+                                  <div className={`space-y-1 flex-1 p-3 rounded-xl border ${isAgentReasoning ? 'bg-indigo-50/50 border-indigo-100 shadow-sm' : 'border-transparent'}`}>
+                                     {isAgentReasoning && (
+                                       <span className="text-[8px] font-black uppercase text-indigo-600 tracking-tighter mb-1 block">Internal Intelligence Log</span>
+                                     )}
+                                     <p className={`text-[11px] font-bold leading-relaxed ${isAgentReasoning ? 'text-indigo-900' : 'text-slate-800'}`}>
+                                       {act.action}
+                                     </p>
+                                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{act.time}</p>
+                                  </div>
+                               </div>
+                             );
+                           }) || <p className="text-center text-[10px] text-slate-400 font-bold uppercase p-6 border border-dashed border-slate-200 rounded-2xl">No history records</p>}
                         </div>
                      </div>
                   </div>

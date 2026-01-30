@@ -11,6 +11,8 @@ export interface DocumentInfo {
   number: string;
   issueDate?: string;
   expiryDate?: string;
+  // Store all fields extracted by the agent for this specific document
+  rawExtractedData?: Record<string, string>;
 }
 
 export interface ActivityLog {
@@ -27,7 +29,7 @@ export interface Comment {
 export interface VerificationRecord {
   id: string;
   timestamp: string;
-  // Global Profile (Must match across all documents)
+  // Global Aggregated Profile (Best match across all docs)
   customerName: string;
   dob?: string;
   address?: string;
@@ -41,11 +43,12 @@ export interface VerificationRecord {
   idImages: Record<string, { front: string; back?: string }>;
   
   riskScore: RiskLevel;
-  pinMatch: boolean;
+  gestureMatch: boolean;
   faceMatchScore: number;
   status: VerificationStatus;
   selfieImage: string;
-  pin: string;
+  performedGesture: string;
+  rejectionReason?: string;
   bucketsSatisfied?: DocBucket[];
   mismatches?: string[];
 
@@ -67,7 +70,7 @@ export type RequiredField =
   | 'expiryDate';
 
 export interface PlatformSettings {
-  requirePin: boolean;
+  requireLivenessGesture: boolean;
   strictFaceMatch: boolean;
   autoRejectExpired: boolean;
   requiredBuckets: DocBucket[];

@@ -22,24 +22,30 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     status: 'Approved',
     riskScore: 'Low',
     faceMatchScore: 98,
-    pinMatch: true,
+    gestureMatch: true,
     documents: { 
       'PAN Card': { 
         type: 'PAN Card', 
         number: 'ABCDE1234F',
         issueDate: '10/10/2015',
-        expiryDate: 'N/A'
+        expiryDate: 'N/A',
+        rawExtractedData: {
+          name: 'RAHUL VERMA',
+          fatherName: 'SURESH VERMA',
+          dob: '12/05/1988',
+          documentNumber: 'ABCDE1234F'
+        }
       } 
     },
     idImages: { 'PAN Card': { front: MOCK_ID_PAN } },
     selfieImage: MOCK_SELFIE_1,
-    pin: '1234',
+    performedGesture: 'Two Fingers (Peace Sign)',
     bucketsSatisfied: ['Tax'],
     assignee: 'Arjun S.',
     activity: [
-      { action: 'Agent session initialized', time: '10:42 AM' },
-      { action: 'Biometric score: 98% (Match)', time: '10:43 AM' },
-      { action: 'Auto-Approved (90%+ Threshold)', time: '10:44 AM' }
+      { action: 'Agent session initialized: User environment secured.', time: '10:42 AM' },
+      { action: 'Agent Intelligence: Biometric score 98% exceeds auto-approval threshold (90%). Liveness gesture "Peace Sign" validated.', time: '10:43 AM' },
+      { action: 'Approved by Agent and Forwarded to compliance for final archival.', time: '10:44 AM' }
     ]
   },
   {
@@ -55,25 +61,35 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     status: 'Flagged',
     riskScore: 'Med',
     faceMatchScore: 82,
-    pinMatch: true,
+    gestureMatch: true,
     documents: { 
       'Passport': { 
         type: 'Passport', 
         number: 'Z1234567',
         issueDate: '01/01/2020',
-        expiryDate: '01/01/2030'
+        expiryDate: '01/01/2030',
+        rawExtractedData: {
+          name: 'SNEHA KAPOOR',
+          dob: '24/09/1995',
+          gender: 'FEMALE',
+          nationality: 'INDIAN',
+          address: 'FLAT 302, GREEN PARK APTS, SOUTH DELHI, PIN: 110016',
+          documentNumber: 'Z1234567',
+          issueDate: '01/01/2020',
+          expiryDate: '01/01/2030'
+        }
       } 
     },
     idImages: { 'Passport': { front: MOCK_ID_PASS } },
     selfieImage: MOCK_SELFIE_2,
-    pin: '5678',
+    performedGesture: 'One Finger',
     bucketsSatisfied: ['Identity', 'Address'],
     assignee: 'Ananya K.',
     mismatches: ['Manual Review Required: Face match in 70-90% range'],
     activity: [
-      { action: 'Agent session initialized', time: '11:15 AM' },
-      { action: 'Biometric score: 82%', time: '11:16 AM' },
-      { action: 'Escalated to Human (70-90% range)', time: '11:17 AM' }
+      { action: 'Agent session initialized: Secure handshake complete.', time: '11:15 AM' },
+      { action: 'Agent Reasoning: Biometric score is 82%. Confidence is below auto-approval threshold (90%) due to slight lighting variance between Passport chip photo and Live selfie. Manual parity check requested.', time: '11:16 AM' },
+      { action: 'Task flagged for Human-in-the-loop review.', time: '11:17 AM' }
     ]
   },
   {
@@ -89,24 +105,29 @@ export const INITIAL_RECORDS: VerificationRecord[] = [
     status: 'Flagged',
     riskScore: 'Med',
     faceMatchScore: 78,
-    pinMatch: true,
+    gestureMatch: true,
     documents: { 
       'PAN Card': { 
         type: 'PAN Card', 
         number: 'BOPPP6290D',
         issueDate: '15/04/2011',
-        expiryDate: 'N/A'
+        expiryDate: 'N/A',
+        rawExtractedData: {
+          name: 'VIKRAM MALHOTRA',
+          dob: '15/07/1991',
+          documentNumber: 'BOPPP6290D'
+        }
       } 
     },
     idImages: { 'PAN Card': { front: MOCK_ID_PAN } },
     selfieImage: MOCK_SELFIE_3,
-    pin: '9021',
+    performedGesture: 'Thumbs Up',
     bucketsSatisfied: ['Tax'],
     assignee: 'Rajesh G.',
     activity: [
-      { action: 'Agent session initialized', time: '09:10 AM' },
-      { action: 'Biometric score: 78%', time: '09:11 AM' },
-      { action: 'Escalated: Manual decision required', time: '09:12 AM' }
+      { action: 'Agent session initialized.', time: '09:10 AM' },
+      { action: 'Agent Reasoning: PAN OCR quality is 78%. Discrepancy detected in "Date of Birth" extraction between PAN and user input. High-risk flag for potential identity mismatch.', time: '09:11 AM' },
+      { action: 'Escalated: Agent cannot resolve field mismatch autonomously. Human verification of physical card required.', time: '09:12 AM' }
     ]
   }
 ];

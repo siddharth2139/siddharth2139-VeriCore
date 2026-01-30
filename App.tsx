@@ -18,11 +18,11 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<VerificationRecord[]>(INITIAL_RECORDS);
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [settings, setSettings] = useState<PlatformSettings>({
-    requirePin: true,
+    requireLivenessGesture: true,
     strictFaceMatch: true,
     autoRejectExpired: true,
     requiredBuckets: ['Tax', 'Address'],
-    requiredFields: ALL_FIELDS // All fields selected by default
+    requiredFields: ALL_FIELDS 
   });
 
   const checkKeyValidity = (key: any) => {

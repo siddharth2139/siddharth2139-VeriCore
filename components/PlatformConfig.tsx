@@ -102,7 +102,7 @@ export const PlatformConfig: React.FC<PlatformConfigProps> = ({ settings, onSett
             </h3>
             <div className="space-y-6">
                {[
-                 { key: 'requirePin', label: 'Selfie PIN verification', sub: 'User must hold a generated code in their selfie' },
+                 { key: 'requireLivenessGesture', label: 'Hand gesture liveness', sub: 'User must perform a specific hand gesture in selfie' },
                  { key: 'strictFaceMatch', label: 'Strict face matching', sub: 'Require high confidence between ID and selfie' },
                  { key: 'autoRejectExpired', label: 'Block expired documents', sub: 'Auto-fail if document date has passed' },
                ].map((toggle) => (

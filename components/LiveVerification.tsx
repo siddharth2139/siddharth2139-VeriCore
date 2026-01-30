@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ShieldAlert, Check, ChevronRight, FileText, Target, PartyPopper, ArrowRight, RefreshCw, ChevronLeft, AlertCircle, RotateCcw, ShieldCheck, Clock } from 'lucide-react';
+import { Camera, ShieldAlert, Check, ChevronRight, FileText, Target, PartyPopper, ArrowRight, RefreshCw, ChevronLeft, AlertCircle, RotateCcw, ShieldCheck, Clock, Hand, UserCircle } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlatformSettings, VerificationRecord, DocBucket, DocumentInfo, VerificationStatus } from '../types';
 import { DOC_CONFIG, AVAILABLE_DOCS } from '../constants';
@@ -11,6 +11,13 @@ interface LiveVerificationProps {
 }
 
 type Step = 'DOC_SELECT' | 'ID_CAPTURE' | 'ID_CHECKING' | 'ID_SUCCESS' | 'ID_FEEDBACK' | 'LIVENESS_CAPTURE' | 'LIVENESS_CHECKING' | 'LIVENESS_SUCCESS' | 'LIVENESS_FEEDBACK' | 'RESULT' | 'FATAL_ERROR' | 'QUOTA_ERROR';
+
+const GESTURES = [
+  { id: '1finger', label: 'Raise 1 Finger', icon: '☝️' },
+  { id: '2fingers', label: 'Raise 2 Fingers', icon: '✌️' },
+  { id: 'thumbsup', label: 'Thumbs Up', icon: '👍' },
+  { id: 'palm', label: 'Open Palm', icon: '🖐️' }
+];
 
 export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, settings }) => {
   const [step, setStep] = useState<Step>('DOC_SELECT');
@@ -26,7 +33,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
   const [globalProfile, setGlobalProfile] = useState<Partial<VerificationRecord>>({});
   const [mismatches, setMismatches] = useState<string[]>([]);
   
-  const [currentPin] = useState(() => Math.floor(1000 + Math.random() * 9000).toString());
+  const [currentGesture] = useState(() => GESTURES[Math.floor(Math.random() * GESTURES.length)]);
   const [stageFeedback, setStageFeedback] = useState<{ message: string; tip?: string; isRetryable: boolean } | null>(null);
   const [result, setResult] = useState<VerificationRecord | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -212,13 +219,20 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const newSatisfied = Array.from(new Set([...satisfiedBuckets, ...bucketsCovered]));
       
       setCapturedImages(prev => ({ ...prev, [selectedDocType!]: { front, back } }));
+      
+      // Filter out technical/internal fields for document display
+      const displayableExtracted = { ...data };
+      delete displayableExtracted.status;
+      delete displayableExtracted.feedback;
+
       setDocumentDetailsMap(prev => ({ 
         ...prev, 
         [selectedDocType!]: { 
           type: selectedDocType!, 
           number: data.documentNumber || "UNREADABLE",
           issueDate: data.issueDate,
-          expiryDate: data.expiryDate
+          expiryDate: data.expiryDate,
+          rawExtractedData: displayableExtracted
         } 
       }));
       
@@ -245,7 +259,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
 
   const verifyFace = async (selfie: string) => {
     setStep('LIVENESS_CHECKING');
-    setThinkingLogs(["Analyzing facial biometrics...", "Confirming security pin..."]);
+    setThinkingLogs(["Analyzing facial biometrics...", "Confirming liveness gesture..."]);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const firstIdKey = Object.keys(capturedImages)[0];
@@ -256,7 +270,11 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: idFront.split(',')[1] } },
             { inlineData: { mimeType: 'image/jpeg', data: selfie.split(',')[1] } },
-            { text: `Match the face in the selfie with the ID. Check for code '${currentPin}'.` }
+            { text: `IDENTITY CHALLENGE:
+            1. Match face in ID with face in Selfie.
+            2. Verify Liveness: Is the user performing the gesture '${currentGesture.label}'?
+            3. ANALYSIS: If face match score is low (<80), explain why (e.g. 'Old document image', 'Poor lighting', 'No facial similarity'). 
+            4. If the gesture is incorrect, state what was seen instead.` }
           ]
         },
         config: {
@@ -264,11 +282,12 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           responseSchema: {
             type: Type.OBJECT,
             properties: { 
-              pinVisible: { type: Type.BOOLEAN }, 
+              gestureMatched: { type: Type.BOOLEAN }, 
               faceMatchScore: { type: Type.NUMBER }, 
-              feedback: { type: Type.STRING } 
+              reasoning: { type: Type.STRING, description: "Detailed reasoning for the matching score or gesture failure" },
+              identifiedGesture: { type: Type.STRING, description: "What gesture the user actually performed" }
             },
-            required: ["pinVisible", "faceMatchScore"]
+            required: ["gestureMatched", "faceMatchScore", "reasoning"]
           }
         }
       });
@@ -277,25 +296,25 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Auto-rejection logic: Score < 70
-      if (data.faceMatchScore < 70) {
+      // Auto-rejection logic: Score < 75 (slightly higher threshold for agentic trust)
+      if (data.faceMatchScore < 75 || !data.gestureMatched) {
         setStageFeedback({ 
-          message: "Verification Declined", 
-          tip: "Bio-similarity analysis failed significantly. This session has been automatically rejected for security purposes.", 
-          isRetryable: false 
+          message: data.faceMatchScore < 75 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
+          tip: data.reasoning || "System detected a significant discrepancy. Ensure you are using your own current document and performing the correct gesture.", 
+          isRetryable: data.faceMatchScore >= 50 // Only allow retry if it's not a complete mismatch
         });
         setStep('LIVENESS_FEEDBACK');
-        finalize(data); // Call finalize to record the rejection
+        if (data.faceMatchScore < 70) finalize(data); // Immediate finalize for high risk
         return;
       }
 
-      if (data.pinVisible && data.faceMatchScore >= 70) {
+      if (data.gestureMatched && data.faceMatchScore >= 75) {
         setStep('LIVENESS_SUCCESS');
         setTimeout(() => finalize(data), 1000);
       } else {
         setStageFeedback({ 
-          message: !data.pinVisible ? "Security code missing" : "Insufficient match quality", 
-          tip: "Please try again. Ensure the code is clearly visible and your face is well-lit.", 
+          message: "Verification Issue", 
+          tip: data.reasoning, 
           isRetryable: true 
         });
         setStep('LIVENESS_FEEDBACK');
@@ -305,15 +324,15 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
 
   const finalize = (aiData: any) => {
     const score = aiData.faceMatchScore;
-    const pinOk = aiData.pinVisible;
+    const gestureOk = aiData.gestureMatched;
     
     // Automatic Decision Logic
-    let status: VerificationStatus = 'Flagged'; // Default to manual review
+    let status: VerificationStatus = 'Flagged'; 
     
-    if (score > 90 && pinOk && mismatches.length === 0) {
-      status = 'Approved'; // Auto-Approved
+    if (score > 90 && gestureOk && mismatches.length === 0) {
+      status = 'Approved'; 
     } else if (score < 70) {
-      status = 'Rejected'; // Auto-Rejected
+      status = 'Rejected'; 
     }
 
     const record: VerificationRecord = {
@@ -329,16 +348,18 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       documents: documentDetailsMap,
       idImages: capturedImages,
       selfieImage: selfieImage!,
-      pin: currentPin,
+      performedGesture: currentGesture.label,
+      rejectionReason: aiData.reasoning,
       faceMatchScore: score,
-      pinMatch: pinOk,
+      gestureMatch: gestureOk,
       status: status,
       riskScore: score < 70 ? 'High' : score > 90 ? 'Low' : 'Med',
       bucketsSatisfied: satisfiedBuckets,
       mismatches: mismatches,
       activity: [
         { action: `Agent session initialized`, time: new Date().toLocaleTimeString() },
-        { action: `Biometric score: ${score}%`, time: new Date().toLocaleTimeString() },
+        { action: `Agent Reasoning: ${aiData.reasoning}`, time: new Date().toLocaleTimeString() },
+        { action: `Biometric score: ${score}% | Gesture: ${gestureOk ? 'Verified' : 'Failed'}`, time: new Date().toLocaleTimeString() },
         { action: status === 'Flagged' ? 'Case escalated for human review' : `Decision: ${status} (Auto-Process)`, time: new Date().toLocaleTimeString() }
       ]
     };
@@ -348,7 +369,6 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
   };
 
   const resetAll = () => { setSatisfiedBuckets([]); setCapturedImages({}); setDocumentDetailsMap({}); setGlobalProfile({}); setMismatches([]); setResult(null); setSide('front'); setSelectedDocType(null); setStep('DOC_SELECT'); };
-  const retryLiveness = () => { setSelfieImage(null); setStep('LIVENESS_CAPTURE'); };
   const retryCurrentDoc = () => { setSide('front'); setStep('ID_CAPTURE'); };
 
   const renderContent = () => {
@@ -360,9 +380,6 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
               <Clock className="w-12 h-12 text-indigo-600 animate-pulse" />
             </div>
             <h2 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">System Cooling Down</h2>
-            <p className="text-slate-500 text-sm mb-12 font-medium max-w-sm mx-auto">
-              Our Agentic Engine has reached its temporary throughput limit. Please wait a moment while the resources are recalibrated.
-            </p>
             <div className="relative w-24 h-24 mx-auto mb-8">
                <svg className="w-full h-full" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="45" fill="none" stroke="#f1f5f9" strokeWidth="8" />
@@ -373,9 +390,6 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                   <span className="text-[8px] font-black uppercase text-slate-400">Seconds</span>
                </div>
             </div>
-            {retryTimer === 0 && (
-              <button onClick={retryCurrentDoc} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/20 hover:scale-105 active:scale-95 transition-all">Retry Now</button>
-            )}
           </div>
         );
       case 'DOC_SELECT':
@@ -399,9 +413,6 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                   <ChevronRight className="w-4 h-4 text-slate-300" />
                 </button>
               ))}
-              {(available.length === 0 || missingBuckets.length === 0) && (
-                <button onClick={() => setStep('LIVENESS_CAPTURE')} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-xl flex items-center justify-center gap-2">Continue to Selfie Check <ArrowRight className="w-4 h-4" /></button>
-              )}
             </div>
           </div>
         );
@@ -413,16 +424,19 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                <h2 className="text-lg font-bold text-slate-900">{selectedDocType} ({side === 'front' ? 'Front' : 'Back'})</h2>
                <div className="w-9 h-1" />
             </div>
-            <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[1.58/1] border border-slate-200 shadow-2xl">
-               {isCameraActive ? (
-                 <>
-                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                   <button onClick={capturePhoto} className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white p-6 rounded-full shadow-2xl active:scale-90 transition-all"><Camera className="w-8 h-8 text-slate-900" /></button>
-                 </>
-               ) : (
-                 <button onClick={handleStartCamera} className="mt-20 px-8 py-3 bg-white text-slate-900 rounded-xl font-bold text-xs">Open Camera</button>
+            <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[1.58/1] border border-slate-200 shadow-2xl mb-8">
+               {isCameraActive && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />}
+               {!isCameraActive && (
+                 <div className="flex items-center justify-center h-full">
+                    <button onClick={handleStartCamera} className="px-8 py-3 bg-white text-slate-900 rounded-xl font-bold text-xs">Open Camera</button>
+                 </div>
                )}
             </div>
+            {isCameraActive && (
+              <button onClick={capturePhoto} className="mx-auto block bg-slate-900 text-white p-6 rounded-full shadow-2xl active:scale-90 transition-all hover:bg-slate-800">
+                <Camera className="w-8 h-8" />
+              </button>
+            )}
           </div>
         );
       case 'ID_CHECKING':
@@ -469,22 +483,35 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       case 'LIVENESS_CAPTURE':
         return (
           <div className="bg-white rounded-[40px] shadow-2xl border border-slate-200 p-10 text-center animate-in zoom-in-95">
-             <h2 className="text-3xl font-black mb-2 text-slate-900 tracking-tight">Facial Liveness</h2>
-             <p className="text-slate-500 text-sm mb-10 font-medium leading-relaxed">Please look directly at the camera and hold a paper showing the unique code below.</p>
-             <div className="relative aspect-square max-w-[320px] mx-auto rounded-full overflow-hidden border-8 border-slate-50 shadow-2xl bg-slate-900">
-                {isCameraActive ? (
-                  <>
-                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                    <button onClick={capturePhoto} className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white p-8 rounded-full shadow-2xl active:scale-90 transition-all"><Camera className="w-10 h-10 text-slate-900" /></button>
-                  </>
-                ) : (
-                  <button onClick={handleStartCamera} className="mt-28 px-10 py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg">Start Selfie</button>
+             <h2 className="text-3xl font-black mb-2 text-slate-900 tracking-tight">Identity Challenge</h2>
+             <p className="text-slate-500 text-sm mb-10 font-medium leading-relaxed">System requires a physical liveness confirmation. Please perform the gesture shown below while looking at the camera.</p>
+             
+             <div className="relative aspect-square max-w-[320px] mx-auto rounded-full overflow-hidden border-8 border-slate-50 shadow-2xl bg-slate-900 mb-8">
+                {isCameraActive && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />}
+                {!isCameraActive && (
+                  <div className="flex items-center justify-center h-full">
+                    <button onClick={handleStartCamera} className="px-10 py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg">Start Selfie</button>
+                  </div>
                 )}
              </div>
-             <div className="mt-12">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Security Code</p>
-                <div className="p-10 bg-slate-900 rounded-[32px] text-indigo-400 text-5xl font-mono font-black tracking-[0.2em] text-center shadow-2xl">
-                  {currentPin}
+
+             {isCameraActive && (
+                <button onClick={capturePhoto} className="mx-auto block bg-slate-900 text-white p-8 rounded-full shadow-2xl active:scale-90 transition-all hover:bg-slate-800">
+                  <Camera className="w-10 h-10" />
+                </button>
+             )}
+
+             <div className="mt-12 bg-indigo-50 p-8 rounded-[40px] border border-indigo-100 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-125 transition-transform duration-1000">
+                   <Hand className="w-24 h-24 text-indigo-900" />
+                </div>
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-4">Required Gesture</p>
+                <div className="flex items-center justify-center gap-6">
+                   <span className="text-6xl">{currentGesture.icon}</span>
+                   <div className="text-left">
+                      <p className="text-3xl font-black text-indigo-900 tracking-tight">{currentGesture.label}</p>
+                      <p className="text-[10px] font-bold text-indigo-500 uppercase">Ensure hand is visible in frame</p>
+                   </div>
                 </div>
              </div>
           </div>
@@ -502,7 +529,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
              <div className="p-12 space-y-12">
                 <div className="flex items-center gap-8 bg-slate-50 p-8 rounded-[40px] border border-slate-100">
                    <img src={result?.selfieImage} className="w-32 h-32 rounded-[32px] object-cover border-4 border-white shadow-2xl" />
-                   <div className="flex-1">
+                   <div className="flex-1 text-left">
                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Authenticated Profile</span>
                      <p className="text-3xl font-black text-slate-900 tracking-tight uppercase mb-4">{result?.customerName}</p>
                      <div className="flex flex-wrap gap-3">
@@ -511,6 +538,12 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                      </div>
                    </div>
                 </div>
+                {isReject && (
+                  <div className="bg-rose-50 border border-rose-100 p-8 rounded-[32px]">
+                     <p className="text-[10px] font-black text-rose-400 uppercase mb-2 tracking-widest flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Agentic Rejection Reasoning</p>
+                     <p className="text-sm font-bold text-rose-900 leading-relaxed italic">"{result?.rejectionReason}"</p>
+                  </div>
+                )}
                 <button onClick={resetAll} className="w-full py-8 bg-slate-900 text-white rounded-[28px] font-bold text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl flex items-center justify-center gap-3">
                    <RefreshCw className="w-5 h-5" /> Start New Verification
                 </button>
