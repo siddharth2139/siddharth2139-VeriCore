@@ -118,7 +118,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-3">
-                      {/* Fix: removed grayscale filter to ensure photo "loads" visually for the user */}
                       <img src={record.selfieImage} className="w-10 h-10 rounded-xl object-cover border border-slate-200 bg-slate-50" />
                       <div>
                         <p className="text-xs font-bold text-slate-800 tracking-tight">{record.customerName}</p>
@@ -181,7 +180,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-               {/* Data Panel */}
                <div className="flex-[7] overflow-y-auto p-10 space-y-12 bg-white custom-scrollbar">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                     <div className="space-y-8">
@@ -197,13 +195,12 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                                 </div>
                              </div>
                              <div className="group relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 aspect-video flex items-center justify-center">
-                                {/* Fix: removed grayscale filter to ensure photo "loads" visually for the user */}
                                 <img src={activeReview.selfieImage} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                              </div>
                           </div>
                           
-                          {Object.entries(activeReview.idImages).map(([docType, sides]) => {
-                            const images = sides as { front: string; back?: string };
+                          {(Object.entries(activeReview.idImages) as [string, {front:string, back?:string}][]).map(([docType, sides]) => {
+                            const images = sides;
                             const docInfo = activeReview.documents[docType];
                             return (
                               <div key={docType} className="space-y-3 pt-6 border-t border-slate-100">
@@ -227,8 +224,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                           </h4>
                           
                           <div className="space-y-12">
-                            {/* DOCUMENT-WISE CATEGORIZATION */}
-                            {/* Fix: Explicitly cast Object.entries results to fix 'unknown' property access errors */}
                             {(Object.entries(activeReview.documents) as [string, DocumentInfo][]).map(([docKey, docInfo]) => (
                               <div key={docKey} className="animate-in fade-in duration-700 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                                 <div className="flex items-center gap-3 mb-8">
@@ -241,10 +236,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                                 </div>
 
                                 <div className="space-y-8">
-                                  {/* Dynamic Field Rendering inspired by user screenshot */}
                                   {docInfo.rawExtractedData ? (
                                     <div className="grid grid-cols-2 gap-y-10 gap-x-6">
-                                      {/* Fix: Explicitly cast Object.entries results to ensure values are treated as strings */}
                                       {(Object.entries(docInfo.rawExtractedData) as [string, string][]).map(([fieldKey, value]) => {
                                         if (!value || value.trim() === "") return null;
                                         const isNameField = fieldKey.toLowerCase() === 'name';
@@ -290,13 +283,13 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                              <div className="flex flex-col gap-2">
                                 <div className="flex justify-between items-center mb-1">
                                    <span className="text-[10px] font-bold text-slate-500 uppercase">Bio-Similarity Analysis</span>
-                                   <span className={`text-xs font-black ${activeReview.faceMatchScore > 90 ? 'text-emerald-600' : activeReview.faceMatchScore < 70 ? 'text-rose-600' : 'text-amber-600'}`}>{activeReview.faceMatchScore}% Match</span>
+                                   <span className={`text-xs font-black ${activeReview.faceMatchScore >= 85 ? 'text-emerald-600' : activeReview.faceMatchScore < 60 ? 'text-rose-600' : 'text-amber-600'}`}>{activeReview.faceMatchScore}% Match</span>
                                 </div>
                                 <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
-                                   <div className={`h-full rounded-full transition-all duration-1000 ${activeReview.faceMatchScore > 90 ? 'bg-emerald-500' : activeReview.faceMatchScore < 70 ? 'bg-rose-500' : 'bg-amber-500'}`} style={{ width: `${activeReview.faceMatchScore}%` }} />
+                                   <div className={`h-full rounded-full transition-all duration-1000 ${activeReview.faceMatchScore >= 85 ? 'bg-emerald-500' : activeReview.faceMatchScore < 60 ? 'bg-rose-500' : 'bg-amber-500'}`} style={{ width: `${activeReview.faceMatchScore}%` }} />
                                 </div>
                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mt-1">
-                                  {activeReview.faceMatchScore > 90 ? 'THRESHOLD: AUTO-APPROVED (90%+)' : activeReview.faceMatchScore < 70 ? 'THRESHOLD: AUTO-REJECTED (<70%)' : 'THRESHOLD: MANUAL REVIEW (70-90%)'}
+                                  {activeReview.faceMatchScore >= 85 ? 'THRESHOLD: AUTO-APPROVED (85%+)' : activeReview.faceMatchScore < 60 ? 'THRESHOLD: AUTO-REJECTED (<60%)' : 'THRESHOLD: MANUAL REVIEW (60-85%)'}
                                 </p>
                              </div>
                              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -312,7 +305,6 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                   </div>
                </div>
 
-               {/* Activity Panel */}
                <div className="flex-[3] bg-slate-50 border-l border-slate-200 flex flex-col min-w-[340px]">
                   <div className="p-8 flex-1 overflow-y-auto space-y-10 custom-scrollbar">
                      <div>

@@ -299,7 +299,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Fix: Force Score to be an integer 0-100.
+      // Scaled normalization: Ensure score is strictly an integer 0-100.
       let finalScore = data.faceMatchScore;
       if (finalScore > 0 && finalScore <= 1.0) {
         finalScore = Math.round(finalScore * 100);
@@ -308,18 +308,19 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       }
       data.faceMatchScore = finalScore;
 
-      // Logic: Threshold lowered to 60 for retry, 80 for auto-pass
+      // Logic: If below 60, it's an immediate fail/re-verify feedback screen.
       if (data.faceMatchScore < 60 || !data.gestureMatched) {
         setStageFeedback({ 
           message: data.faceMatchScore < 60 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
           tip: data.reasoning || "System detected a significant discrepancy. Ensure you are using your own current document and performing the correct gesture.", 
-          isRetryable: data.faceMatchScore >= 30 
+          isRetryable: data.faceMatchScore >= 40 
         });
         setStep('LIVENESS_FEEDBACK');
-        if (data.faceMatchScore < 30) finalize(data, selfie); 
+        if (data.faceMatchScore < 40) finalize(data, selfie); 
         return;
       }
 
+      // If 60+ and gesture OK, we finalize and let the decision engine handle status.
       if (data.gestureMatched && data.faceMatchScore >= 60) {
         setStep('LIVENESS_SUCCESS');
         setTimeout(() => finalize(data, selfie), 1000);
@@ -336,8 +337,11 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     
     let status: VerificationStatus = 'Flagged'; 
     
-    // Logic: Threshold lowered to 80 for auto-approval
-    if (score >= 80 && gestureOk) {
+    // Categorization logic:
+    // 85% + = Approved (Auto Match)
+    // 60-85% = Flagged (Manual Review)
+    // < 60% = Rejected
+    if (score >= 85 && gestureOk) {
       status = 'Approved'; 
     } else if (score < 60) {
       status = 'Rejected'; 
@@ -370,7 +374,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         { action: `Agent session initialized`, time: new Date().toLocaleTimeString() },
         { action: `Agent Reasoning: ${aiData.reasoning}`, time: new Date().toLocaleTimeString() },
         { action: `Biometric score: ${score}% | Gesture: ${gestureOk ? 'Verified' : 'Failed'}`, time: new Date().toLocaleTimeString() },
-        { action: status === 'Flagged' ? 'Case escalated for human review' : `Decision: ${status} (Auto-Process)`, time: new Date().toLocaleTimeString() }
+        { action: status === 'Flagged' ? 'Case escalated for human review (60-85% match range)' : `Decision: ${status} (Auto-Process)`, time: new Date().toLocaleTimeString() }
       ]
     };
     setResult(record);
@@ -530,6 +534,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         );
       case 'RESULT':
         const isReject = result?.status === 'Rejected';
+        const isFlagged = result?.status === 'Flagged';
         return (
           <div className="bg-white rounded-[48px] shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-12 duration-1000">
              <div className={`p-16 text-center text-white ${isReject ? 'bg-rose-600' : result?.status === 'Approved' ? 'bg-emerald-600' : 'bg-amber-600'}`}>
@@ -546,17 +551,19 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                      <p className="text-3xl font-black text-slate-900 tracking-tight uppercase mb-4">{result?.customerName}</p>
                      <div className="flex flex-wrap gap-3">
                         <span className={`px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase ${isReject ? 'text-rose-600' : 'text-slate-600'}`}>{result?.riskScore} Risk Profile</span>
-                        <span className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase">{result?.faceMatchScore}% Face similarity</span>
+                        <span className={`px-4 py-2 bg-white border rounded-xl text-[10px] font-black uppercase ${result?.faceMatchScore >= 85 ? 'text-emerald-600 border-emerald-200' : result?.faceMatchScore < 60 ? 'text-rose-600 border-rose-200' : 'text-amber-600 border-amber-200'}`}>
+                          {result?.faceMatchScore}% Face similarity
+                        </span>
                      </div>
                    </div>
                 </div>
                 
-                <div className={`${isReject ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'} border p-8 rounded-[32px]`}>
-                   <p className={`text-[10px] font-black ${isReject ? 'text-rose-400' : 'text-indigo-400'} uppercase mb-2 tracking-widest flex items-center gap-2`}>
+                <div className={`${isReject ? 'bg-rose-50 border-rose-100' : isFlagged ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'} border p-8 rounded-[32px]`}>
+                   <p className={`text-[10px] font-black ${isReject ? 'text-rose-400' : isFlagged ? 'text-amber-500' : 'text-emerald-500'} uppercase mb-2 tracking-widest flex items-center gap-2`}>
                      {isReject ? <AlertCircle className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
                      {isReject ? 'Agentic Rejection Reasoning' : 'Agentic Matching Analysis'}
                    </p>
-                   <p className={`text-sm font-bold ${isReject ? 'text-rose-900' : 'text-indigo-900'} leading-relaxed italic`}>
+                   <p className={`text-sm font-bold ${isReject ? 'text-rose-900' : isFlagged ? 'text-amber-900' : 'text-emerald-900'} leading-relaxed italic`}>
                      "{result?.rejectionReason}"
                    </p>
                 </div>
