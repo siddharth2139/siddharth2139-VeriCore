@@ -4,13 +4,14 @@ import { Sidebar } from './components/Sidebar';
 import { LiveVerification } from './components/LiveVerification';
 import { AgentDashboard } from './components/AgentDashboard';
 import { PlatformConfig } from './components/PlatformConfig';
-import { TabType, VerificationRecord, PlatformSettings } from './types';
+import { TabType, VerificationRecord, PlatformSettings, RequiredField } from './types';
 import { INITIAL_RECORDS } from './constants';
-// Added ShieldCheck to imports
 import { Key, AlertCircle, ExternalLink, ShieldCheck } from 'lucide-react';
 
-// Removed redundant window.aistudio declaration to resolve type modifier and type mismatch errors
-// as the environment already provides the AIStudio type definition for window.aistudio.
+const ALL_FIELDS: RequiredField[] = [
+  'name', 'dob', 'address', 'gender', 'fatherName', 
+  'motherName', 'nationality', 'issueDate', 'expiryDate'
+];
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('verification');
@@ -21,7 +22,7 @@ const App: React.FC = () => {
     strictFaceMatch: true,
     autoRejectExpired: true,
     requiredBuckets: ['Tax', 'Address'],
-    requiredFields: ['name', 'dob', 'address', 'gender', 'fatherName']
+    requiredFields: ALL_FIELDS // All fields selected by default
   });
 
   const checkKeyValidity = (key: any) => {
@@ -33,14 +34,11 @@ const App: React.FC = () => {
       try {
         if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
           const selected = await window.aistudio.hasSelectedApiKey();
-          // If the platform says we have a key, prioritize that
           if (selected) {
             setHasKey(true);
             return;
           }
         }
-        
-        // Fallback to environment variables
         const envKey = process.env.API_KEY;
         setHasKey(checkKeyValidity(envKey));
       } catch (e) {
