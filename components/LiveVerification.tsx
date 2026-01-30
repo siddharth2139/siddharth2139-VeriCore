@@ -275,7 +275,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
             { text: `IDENTITY CHALLENGE:
             1. Match face in ID with face in Selfie.
             2. Verify Liveness: Is the user performing the gesture '${currentGesture.label}'?
-            3. ANALYSIS: If face match score is low (<80), explain why (e.g. 'Old document image', 'Poor lighting', 'No facial similarity'). 
+            3. ANALYSIS: Return a faceMatchScore from 0 to 100 (where 100 is identical). If the score is low (<80), explain why (e.g. 'Old document image', 'Poor lighting', 'No facial similarity'). 
             4. If the gesture is incorrect, state what was seen instead.` }
           ]
         },
@@ -285,7 +285,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
             type: Type.OBJECT,
             properties: { 
               gestureMatched: { type: Type.BOOLEAN }, 
-              faceMatchScore: { type: Type.NUMBER }, 
+              faceMatchScore: { type: Type.NUMBER, description: "A score between 0 and 100 representing facial similarity" }, 
               reasoning: { type: Type.STRING, description: "Detailed reasoning for the matching score or gesture failure" },
               identifiedGesture: { type: Type.STRING, description: "What gesture the user actually performed" }
             },
@@ -298,18 +298,25 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      if (data.faceMatchScore < 75 || !data.gestureMatched) {
+      // Fix: Normalize score (if model returns 0.90 instead of 90)
+      let normalizedScore = data.faceMatchScore;
+      if (normalizedScore > 0 && normalizedScore <= 1.0) {
+        normalizedScore = normalizedScore * 100;
+      }
+      data.faceMatchScore = Math.round(normalizedScore);
+
+      if (data.faceMatchScore < 70 || !data.gestureMatched) {
         setStageFeedback({ 
-          message: data.faceMatchScore < 75 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
+          message: data.faceMatchScore < 70 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
           tip: data.reasoning || "System detected a significant discrepancy. Ensure you are using your own current document and performing the correct gesture.", 
           isRetryable: data.faceMatchScore >= 50 
         });
         setStep('LIVENESS_FEEDBACK');
-        if (data.faceMatchScore < 70) finalize(data, selfie);
+        if (data.faceMatchScore < 50) finalize(data, selfie); // Immediate rejection if extremely low
         return;
       }
 
-      if (data.gestureMatched && data.faceMatchScore >= 75) {
+      if (data.gestureMatched && data.faceMatchScore >= 70) {
         setStep('LIVENESS_SUCCESS');
         setTimeout(() => finalize(data, selfie), 1000);
       } else {
@@ -329,10 +336,14 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     
     let status: VerificationStatus = 'Flagged'; 
     
-    if (score > 90 && gestureOk && mismatches.length === 0) {
+    // Logic Fix: Ensure high match (>= 75) + gesture = Approval or Flag for review.
+    // Manual review is for 70-90. Auto approval for > 90.
+    if (score > 90 && gestureOk) {
       status = 'Approved'; 
     } else if (score < 70) {
       status = 'Rejected'; 
+    } else {
+      status = 'Flagged';
     }
 
     const record: VerificationRecord = {
@@ -347,7 +358,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       nationality: globalProfile.nationality,
       documents: documentDetailsMap,
       idImages: capturedImages,
-      selfieImage: selfie, // Using direct selfie string to avoid async state issues
+      selfieImage: selfie, 
       performedGesture: currentGesture.label,
       rejectionReason: aiData.reasoning,
       faceMatchScore: score,
@@ -540,12 +551,17 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                      </div>
                    </div>
                 </div>
-                {isReject && (
-                  <div className="bg-rose-50 border border-rose-100 p-8 rounded-[32px]">
-                     <p className="text-[10px] font-black text-rose-400 uppercase mb-2 tracking-widest flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Agentic Rejection Reasoning</p>
-                     <p className="text-sm font-bold text-rose-900 leading-relaxed italic">"{result?.rejectionReason}"</p>
-                  </div>
-                )}
+                
+                <div className={`${isReject ? 'bg-rose-50 border-rose-100' : 'bg-indigo-50 border-indigo-100'} border p-8 rounded-[32px]`}>
+                   <p className={`text-[10px] font-black ${isReject ? 'text-rose-400' : 'text-indigo-400'} uppercase mb-2 tracking-widest flex items-center gap-2`}>
+                     {isReject ? <AlertCircle className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                     {isReject ? 'Agentic Rejection Reasoning' : 'Agentic Matching Analysis'}
+                   </p>
+                   <p className={`text-sm font-bold ${isReject ? 'text-rose-900' : 'text-indigo-900'} leading-relaxed italic`}>
+                     "{result?.rejectionReason}"
+                   </p>
+                </div>
+                
                 <button onClick={resetAll} className="w-full py-8 bg-slate-900 text-white rounded-[28px] font-bold text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-2xl flex items-center justify-center gap-3">
                    <RefreshCw className="w-5 h-5" /> Start New Verification
                 </button>

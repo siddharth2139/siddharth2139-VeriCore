@@ -228,7 +228,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                           
                           <div className="space-y-12">
                             {/* DOCUMENT-WISE CATEGORIZATION */}
-                            {Object.entries(activeReview.documents).map(([docKey, docInfo]) => (
+                            {/* Fix: Explicitly cast Object.entries results to fix 'unknown' property access errors */}
+                            {(Object.entries(activeReview.documents) as [string, DocumentInfo][]).map(([docKey, docInfo]) => (
                               <div key={docKey} className="animate-in fade-in duration-700 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                                 <div className="flex items-center gap-3 mb-8">
                                   <div className="p-2 bg-indigo-50 rounded-xl">
@@ -243,7 +244,8 @@ export const AgentDashboard: React.FC<AgentDashboardProps> = ({ records, onUpdat
                                   {/* Dynamic Field Rendering inspired by user screenshot */}
                                   {docInfo.rawExtractedData ? (
                                     <div className="grid grid-cols-2 gap-y-10 gap-x-6">
-                                      {Object.entries(docInfo.rawExtractedData).map(([fieldKey, value]) => {
+                                      {/* Fix: Explicitly cast Object.entries results to ensure values are treated as strings */}
+                                      {(Object.entries(docInfo.rawExtractedData) as [string, string][]).map(([fieldKey, value]) => {
                                         if (!value || value.trim() === "") return null;
                                         const isNameField = fieldKey.toLowerCase() === 'name';
                                         const isFullWidth = fieldKey === 'address' || isNameField;
