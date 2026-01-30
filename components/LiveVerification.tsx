@@ -118,18 +118,28 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
   const handleError = (err: any) => {
     console.error("Agentic Engine Error:", err);
     let message = "Verification failed";
-    let tip = "We encountered a technical error processing the document. Please try again.";
-
+    
     const errorString = JSON.stringify(err).toLowerCase();
     const errorMsg = err.message?.toLowerCase() || "";
+    const rawMsg = err.message || "Unknown error";
     
+    let tip = `Technical Details: ${rawMsg}. Please ensure your Vercel API_KEY is set and valid.`;
+
     if (errorString.includes("429") || errorString.includes("resource_exhausted") || errorMsg.includes("quota") || errorMsg.includes("rate limit")) {
       message = "Quota Reached (429)";
-      tip = "You have reached the API limit. GEMINI FREE TIER: 15 Requests per Minute (RPM) and 1,500 Requests per Day. RPM resets every 60 seconds. Daily quota resets at 12:00 AM UTC. Please wait a moment and try again.";
+      tip = "Gemini Free Tier limit exceeded. Please wait 60 seconds and try again.";
     } 
     else if (errorString.includes("safety") || errorString.includes("candidate") || errorMsg.includes("blocked")) {
       message = "AI Safety Block";
-      tip = "The AI system flagged this image. Ensure the ID is clearly visible with no sensitive background elements.";
+      tip = "The AI system flagged this image as potentially sensitive. Try a cleaner background.";
+    }
+    else if (errorString.includes("not found") || errorMsg.includes("not found") || errorString.includes("404")) {
+      message = "API Endpoint Error";
+      tip = "The API key or project was not found. Check if the key is associated with a paid GCP project.";
+    }
+    else if (errorMsg.includes("api key") || errorString.includes("unauthorized") || errorString.includes("401") || errorString.includes("key is invalid")) {
+      message = "Invalid API Key";
+      tip = "Vercel is passing an invalid key to the client. Verify 'API_KEY' in Vercel settings and redeploy.";
     }
 
     setStageFeedback({ message, tip, isRetryable: true });
@@ -141,23 +151,17 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     setThinkingLogs(["Scanning your ID card...", "Analyzing image quality..."]);
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const currentKey = process.env.API_KEY || '';
+      if (!currentKey || currentKey === 'undefined') {
+        throw new Error("API Key is missing or undefined in client build.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey: currentKey });
       const parts = [
         { inlineData: { mimeType: 'image/jpeg', data: front.split(',')[1] } },
         { text: `IDENTITY CHECK: Indian ${selectedDocType}. 
           
-          TASK: Critical visual audit. Identify WHY it might fail.
-          
-          AUDIT CODES (One of):
-          - 'BLURRY': Text or face photo is not sharp.
-          - 'GLARE': Reflection is obscuring data.
-          - 'COVERED': Fingers/objects blocking ID photo, Name, or Number.
-          - 'SCREEN_DETECTED': This is a photo of a screen, not a physical ID.
-          - 'EXPIRED': Document has passed expiry date.
-          - 'POOR_LIGHTING': Image is too dark.
-          - 'SUCCESS': Document is perfect.
-          
-          If SUCCESS, extract Name, DOB (DD/MM/YYYY), Document Number, and Address.
+          TASK: Extract Name, DOB (DD/MM/YYYY), Document Number, and Address.
           
           Return ONLY JSON following the defined schema.` }
       ];
@@ -191,16 +195,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       if (data.status !== 'SUCCESS') {
-        let title = "Verification Issue";
-        switch (data.status) {
-          case 'BLURRY': title = "Image is Blurry"; break;
-          case 'GLARE': title = "Glare on Document"; break;
-          case 'COVERED': title = "Document is Covered"; break;
-          case 'SCREEN_DETECTED': title = "Physical ID Required"; break;
-          case 'EXPIRED': title = "Document Expired"; break;
-          case 'POOR_LIGHTING': title = "Too Dark to Read"; break;
-        }
-        setStageFeedback({ message: title, tip: `${data.feedback || "We couldn't read the ID."} ${data.tip || ""}`, isRetryable: true });
+        setStageFeedback({ message: "Extraction Issue", tip: data.feedback || "We couldn't read the ID clearly.", isRetryable: true });
         setStep('ID_FEEDBACK');
         return;
       }
@@ -224,7 +219,8 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     setStep('LIVENESS_CHECKING');
     setThinkingLogs(["Scanning your face...", "Checking your security code..."]);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const currentKey = process.env.API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey: currentKey });
       const firstIdKey = Object.keys(capturedImages)[0];
       const idFront = capturedImages[firstIdKey].front;
       const responsePromise = ai.models.generateContent({
@@ -365,7 +361,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center animate-in zoom-in-95">
             <ShieldAlert className="w-16 h-16 text-amber-500 mx-auto mb-6" />
             <h2 className="text-2xl font-bold mb-3 text-slate-900 tracking-tight">{stageFeedback?.message || "Verification Failed"}</h2>
-            <div className="bg-amber-50 p-6 rounded-2xl text-sm text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner">
+            <div className="bg-amber-50 p-6 rounded-2xl text-[11px] font-mono text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner overflow-auto max-h-[150px]">
               {stageFeedback?.tip || "Try taking a clearer photo."}
             </div>
             <div className="flex gap-4">
@@ -379,8 +375,8 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center animate-in zoom-in-95">
             <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-6" />
             <h2 className="text-2xl font-bold mb-3 text-slate-900 tracking-tight">Selfie Check Issue</h2>
-            <div className="bg-amber-50 p-6 rounded-2xl text-sm text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner">
-              <p className="font-bold mb-2">{stageFeedback?.message}</p>
+            <div className="bg-amber-50 p-6 rounded-2xl text-[11px] font-mono text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner overflow-auto max-h-[150px]">
+              <p className="font-bold mb-2 uppercase">{stageFeedback?.message}</p>
               {stageFeedback?.tip}
             </div>
             <div className="flex gap-4">
