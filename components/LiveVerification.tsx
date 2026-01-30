@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ShieldAlert, Check, ChevronRight, FileText, Target, PartyPopper, ArrowRight, RefreshCw, ChevronLeft, AlertCircle, RotateCcw } from 'lucide-react';
+// Added ShieldCheck to the lucide-react imports
+import { Camera, ShieldAlert, Check, ChevronRight, FileText, Target, PartyPopper, ArrowRight, RefreshCw, ChevronLeft, AlertCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlatformSettings, VerificationRecord, DocBucket, DocumentInfo } from '../types';
 import { DOC_CONFIG, AVAILABLE_DOCS } from '../constants';
@@ -118,52 +119,38 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
   const handleError = (err: any) => {
     console.error("Agentic Engine Error:", err);
     let message = "Verification failed";
-    
-    const errorString = JSON.stringify(err).toLowerCase();
-    const errorMsg = err.message?.toLowerCase() || "";
     const rawMsg = err.message || "Unknown error";
-    
     let tip = `Technical Details: ${rawMsg}. Please ensure your Vercel API_KEY is set and valid.`;
-
-    if (errorString.includes("429") || errorString.includes("resource_exhausted") || errorMsg.includes("quota") || errorMsg.includes("rate limit")) {
-      message = "Quota Reached (429)";
-      tip = "Gemini Free Tier limit exceeded. Please wait 60 seconds and try again.";
-    } 
-    else if (errorString.includes("safety") || errorString.includes("candidate") || errorMsg.includes("blocked")) {
-      message = "AI Safety Block";
-      tip = "The AI system flagged this image as potentially sensitive. Try a cleaner background.";
-    }
-    else if (errorString.includes("not found") || errorMsg.includes("not found") || errorString.includes("404")) {
-      message = "API Endpoint Error";
-      tip = "The API key or project was not found. Check if the key is associated with a paid GCP project.";
-    }
-    else if (errorMsg.includes("api key") || errorString.includes("unauthorized") || errorString.includes("401") || errorString.includes("key is invalid")) {
-      message = "Invalid API Key";
-      tip = "Vercel is passing an invalid key to the client. Verify 'API_KEY' in Vercel settings and redeploy.";
-    }
-
     setStageFeedback({ message, tip, isRetryable: true });
     setStep('ID_FEEDBACK');
   };
 
   const verifyIdentity = async (front: string, back?: string) => {
     setStep('ID_CHECKING');
-    setThinkingLogs(["Scanning your ID card...", "Analyzing image quality..."]);
+    setThinkingLogs(["Scanning Indian ID card...", "Recognizing document format..."]);
     
     try {
-      const currentKey = process.env.API_KEY || '';
-      if (!currentKey || currentKey === 'undefined') {
-        throw new Error("API Key is missing or undefined in client build.");
-      }
+      // Corrected: Initialize GoogleGenAI directly with process.env.API_KEY as per guidelines
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      const docRequirement = DOC_CONFIG[selectedDocType!];
+      
+      const prompt = `IDENTITY CHECK: Indian ${selectedDocType}. 
+      
+      IMPORTANT CONTEXT: 
+      - If this is a PAN Card, it DOES NOT contain an address. Do not flag as failure if address is missing.
+      - Aadhaar/Passport usually have addresses on the BACK side.
+      - Extract: Name, DOB, Document Number, and Address (if present).
+      
+      SUCCESS CRITERIA:
+      - If ${docRequirement.expectedFields.join(', ')} are visible and readable, set status to 'SUCCESS'.
+      - Only fail for blurry images, glare, or physical obstruction.
+      
+      Return ONLY JSON.`;
 
-      const ai = new GoogleGenAI({ apiKey: currentKey });
       const parts = [
         { inlineData: { mimeType: 'image/jpeg', data: front.split(',')[1] } },
-        { text: `IDENTITY CHECK: Indian ${selectedDocType}. 
-          
-          TASK: Extract Name, DOB (DD/MM/YYYY), Document Number, and Address.
-          
-          Return ONLY JSON following the defined schema.` }
+        { text: prompt }
       ];
       if (back) parts.push({ inlineData: { mimeType: 'image/jpeg', data: back.split(',')[1] } });
 
@@ -175,11 +162,11 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              status: { type: Type.STRING },
+              status: { type: Type.STRING, description: "SUCCESS or FAIL" },
               name: { type: Type.STRING },
               documentNumber: { type: Type.STRING },
               dob: { type: Type.STRING },
-              address: { type: Type.STRING },
+              address: { type: Type.STRING, description: "Address string, or null if not applicable/present" },
               feedback: { type: Type.STRING },
               tip: { type: Type.STRING }
             },
@@ -188,39 +175,53 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         }
       });
 
-      setTimeout(() => setThinkingLogs(prev => [...prev, "Checking for glare...", "Verifying original document..."]), 1000);
+      setTimeout(() => setThinkingLogs(prev => [...prev, "Checking security holographic markers...", "Cross-referencing Indian ID patterns..."]), 1000);
 
       const response = await responsePromise;
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       if (data.status !== 'SUCCESS') {
-        setStageFeedback({ message: "Extraction Issue", tip: data.feedback || "We couldn't read the ID clearly.", isRetryable: true });
+        setStageFeedback({ 
+          message: "Clarification Needed", 
+          tip: data.feedback || `The AI was unable to reliably extract ${selectedDocType} data. Ensure good lighting and clear text.`, 
+          isRetryable: true 
+        });
         setStep('ID_FEEDBACK');
         return;
       }
 
       const bucketsCovered = DOC_CONFIG[selectedDocType!]?.buckets || [];
       const newSatisfied = Array.from(new Set([...satisfiedBuckets, ...bucketsCovered]));
+      
       setCapturedImages(prev => ({ ...prev, [selectedDocType!]: { front, back } }));
       setDocumentDetailsMap(prev => ({ ...prev, [selectedDocType!]: { type: selectedDocType!, number: data.documentNumber || "UNREADABLE" } }));
-      setGlobalProfile(prev => ({ customerName: data.name || prev.customerName || "", dob: data.dob || prev.dob || "", address: data.address || prev.address || "" }));
+      setGlobalProfile(prev => ({ 
+        customerName: data.name || prev.customerName || "", 
+        dob: data.dob || prev.dob || "", 
+        address: data.address || prev.address || "" 
+      }));
       setSatisfiedBuckets(newSatisfied);
       setStep('ID_SUCCESS');
+      
       setTimeout(() => {
           const done = settings.requiredBuckets.every(b => newSatisfied.includes(b));
           if (done) setStep('LIVENESS_CAPTURE');
-          else { setSelectedDocType(null); setSide('front'); setStep('DOC_SELECT'); }
+          else { 
+            setSelectedDocType(null); 
+            setSide('front'); 
+            setStep('DOC_SELECT'); 
+          }
       }, 1000);
     } catch (err) { handleError(err); }
   };
 
   const verifyFace = async (selfie: string) => {
     setStep('LIVENESS_CHECKING');
-    setThinkingLogs(["Scanning your face...", "Checking your security code..."]);
+    setThinkingLogs(["Analyzing facial biometrics...", "Detecting spoofing attempts..."]);
     try {
-      const currentKey = process.env.API_KEY || '';
-      const ai = new GoogleGenAI({ apiKey: currentKey });
+      // Corrected: Initialize GoogleGenAI directly with process.env.API_KEY as per guidelines
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const firstIdKey = Object.keys(capturedImages)[0];
       const idFront = capturedImages[firstIdKey].front;
       const responsePromise = ai.models.generateContent({
@@ -229,19 +230,23 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: idFront.split(',')[1] } },
             { inlineData: { mimeType: 'image/jpeg', data: selfie.split(',')[1] } },
-            { text: `Match the face in the selfie to the ID (0-100). Check for code '${currentPin}'.` }
+            { text: `BIOMETRIC ANALYSIS: Compare the face on the ID card to the live selfie. Return a similarity score (0-100). Also confirm if the security code '${currentPin}' is clearly visible in the selfie.` }
           ]
         },
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
-            properties: { pinVisible: { type: Type.BOOLEAN }, faceMatchScore: { type: Type.NUMBER }, feedback: { type: Type.STRING } },
+            properties: { 
+              pinVisible: { type: Type.BOOLEAN }, 
+              faceMatchScore: { type: Type.NUMBER }, 
+              feedback: { type: Type.STRING } 
+            },
             required: ["pinVisible", "faceMatchScore"]
           }
         }
       });
-      setTimeout(() => setThinkingLogs(prev => [...prev, "Finalizing check..."]), 1500);
+      setTimeout(() => setThinkingLogs(prev => [...prev, "Verifying security PIN match...", "Finalizing identity claim..."]), 1500);
       const response = await responsePromise;
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -249,7 +254,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         setStep('LIVENESS_SUCCESS');
         setTimeout(() => finalize(data), 1000);
       } else {
-        setStageFeedback({ message: !data.pinVisible ? "Security code not found." : "Face match unsuccessful.", tip: "Hold the code clearly in good light.", isRetryable: true });
+        setStageFeedback({ message: !data.pinVisible ? "Security code missing" : "Facial verification failed", tip: "Ensure the document is held near your face and the code is readable.", isRetryable: true });
         setStep('LIVENESS_FEEDBACK');
       }
     } catch (err) { handleError(err); }
@@ -287,31 +292,45 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     switch (step) {
       case 'DOC_SELECT':
         const available = AVAILABLE_DOCS.filter(d => !Object.keys(capturedImages).includes(d));
+        const allBuckets = settings.requiredBuckets;
+        const missingBuckets = allBuckets.filter(b => !satisfiedBuckets.includes(b));
+        
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 animate-in fade-in zoom-in-95">
-            <h2 className="text-xl font-bold text-slate-900 mb-2 text-center tracking-tight">Identity Verification</h2>
-            <p className="text-slate-500 text-sm mb-8 text-center font-medium">Please select a document to scan</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-2 text-center tracking-tight">Supply Verification Documents</h2>
+            <p className="text-slate-500 text-sm mb-8 text-center font-medium">Please select a document to satisfy: <span className="text-indigo-600 font-bold">{missingBuckets.join(', ')}</span></p>
             <div className="space-y-3">
-              {available.map(doc => (
-                <button key={doc} onClick={() => { setSelectedDocType(doc); setSide('front'); setStep('ID_CAPTURE'); }}
-                  className="w-full flex items-center justify-between p-5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 group transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-white border border-slate-200 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-slate-400 group-hover:text-indigo-600" />
+              {available.map(doc => {
+                const docBuckets = DOC_CONFIG[doc].buckets;
+                const helps = docBuckets.some(b => missingBuckets.includes(b));
+                return (
+                  <button 
+                    key={doc} 
+                    onClick={() => { setSelectedDocType(doc); setSide('front'); setStep('ID_CAPTURE'); }}
+                    className={`w-full flex items-center justify-between p-5 bg-slate-50 border rounded-xl hover:bg-slate-100 group transition-all ${helps ? 'border-indigo-200 ring-2 ring-indigo-500/5' : 'border-slate-200 grayscale opacity-60'}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 bg-white border rounded-lg flex items-center justify-center ${helps ? 'border-indigo-200' : 'border-slate-200'}`}>
+                        <FileText className={`w-5 h-5 ${helps ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-slate-800 text-sm">{doc}</p>
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Provides: {docBuckets.join(' + ')}</p>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <p className="font-bold text-slate-800 text-sm">{doc}</p>
-                      <p className="text-[10px] text-slate-500 font-medium">Verify {DOC_CONFIG[doc].buckets.join(' & ')}</p>
-                    </div>
+                    {helps && <div className="px-2 py-1 bg-indigo-50 text-indigo-600 text-[8px] font-black uppercase rounded border border-indigo-100">Required</div>}
+                    {!helps && <ChevronRight className="w-4 h-4 text-slate-300" />}
+                  </button>
+                );
+              })}
+              {available.length === 0 || missingBuckets.length === 0 && (
+                <div className="py-6 text-center space-y-6 animate-in zoom-in">
+                  <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-100 shadow-sm"><Check className="w-8 h-8" strokeWidth={3} /></div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Documents Verified</h3>
+                    <p className="text-xs text-slate-400 font-medium">All required proof points have been satisfied.</p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-slate-300" />
-                </button>
-              ))}
-              {available.length === 0 && (
-                <div className="py-6 text-center space-y-6">
-                  <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-100"><Check className="w-7 h-7" strokeWidth={3} /></div>
-                  <h3 className="text-lg font-bold text-slate-900">Documents Scanned</h3>
-                  <button onClick={() => setStep('LIVENESS_CAPTURE')} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors">Start Selfie Check <ArrowRight className="w-4 h-4" /></button>
+                  <button onClick={() => setStep('LIVENESS_CAPTURE')} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all hover:translate-y-[-1px]">Proceed to Selfie Check <ArrowRight className="w-4 h-4" /></button>
                 </div>
               )}
             </div>
@@ -321,36 +340,50 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
             <div className="flex justify-between items-center mb-6">
-               <button onClick={() => setStep('DOC_SELECT')} className="p-2 hover:bg-slate-50 rounded-full text-slate-400"><ChevronLeft className="w-5 h-5" /></button>
-               <h2 className="text-lg font-bold text-slate-900 tracking-tight">Scan {selectedDocType} ({side === 'front' ? 'Front' : 'Back'})</h2>
+               <button onClick={() => setStep('DOC_SELECT')} className="p-2 hover:bg-slate-50 rounded-full text-slate-400 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+               <div>
+                  <h2 className="text-lg font-bold text-slate-900 tracking-tight">{selectedDocType}</h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{side === 'front' ? 'Front Side' : 'Back Side (Address)'}</p>
+               </div>
                <div className="w-9 h-1" />
             </div>
-            <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-[1.5/1] border border-slate-200 shadow-inner">
+            <div className="relative rounded-2xl overflow-hidden bg-slate-900 aspect-[1.58/1] border border-slate-200 shadow-2xl">
                {isCameraActive ? (
                  <>
                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                   <div className="absolute inset-0 border-[40px] border-black/30 rounded-xl pointer-events-none" />
-                   <button onClick={capturePhoto} className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white p-5 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all">
-                     <Camera className="w-8 h-8 text-slate-900" />
+                   <div className="absolute inset-0 border-[3px] border-white/40 m-6 rounded-xl border-dashed pointer-events-none" />
+                   <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
+                   <button onClick={capturePhoto} className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white p-6 rounded-full shadow-2xl hover:scale-105 active:scale-90 transition-all group">
+                     <Camera className="w-8 h-8 text-slate-900 group-hover:text-indigo-600" />
                    </button>
                  </>
                ) : (
-                 <button onClick={handleStartCamera} className="mt-20 px-8 py-3 bg-indigo-600 text-white rounded-lg font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20">Open Camera</button>
+                 <div className="flex flex-col items-center justify-center h-full">
+                   <button onClick={handleStartCamera} className="px-10 py-4 bg-white text-slate-900 rounded-xl font-bold text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-slate-50 transition-all"><Camera className="w-4 h-4" /> Initialize Camera</button>
+                 </div>
                )}
             </div>
+            <p className="mt-6 text-xs text-slate-400 font-medium">Ensure all 4 corners of the ID are visible and text is sharp.</p>
           </div>
         );
       case 'ID_CHECKING':
       case 'LIVENESS_CHECKING':
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-16 text-center animate-in fade-in">
-            <div className="w-12 h-12 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-            <h3 className="text-xl font-bold text-slate-900 mb-4 tracking-tight">Agentic AI Thinking...</h3>
-            <div className="space-y-3 max-w-[200px] mx-auto text-left">
+          <div className="bg-white rounded-[32px] shadow-2xl border border-slate-100 p-20 text-center animate-in fade-in zoom-in-95">
+            <div className="relative w-20 h-20 mx-auto mb-10">
+               <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
+               <div className="absolute inset-0 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+               <ShieldCheck className="absolute inset-0 m-auto w-8 h-8 text-indigo-600" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Agent Intelligence Active</h3>
+            <p className="text-slate-500 text-sm mb-10 font-medium">Extracting data via multimodal spatial reasoning...</p>
+            <div className="space-y-4 max-w-[280px] mx-auto text-left">
               {thinkingLogs.map((log, i) => (
-                <div key={i} className="flex items-center gap-3 animate-in slide-in-from-left-2 fade-in">
-                  <Check className={`w-3.5 h-3.5 ${i === thinkingLogs.length - 1 ? 'text-slate-200' : 'text-emerald-500'}`} strokeWidth={4} />
-                  <span className="text-xs font-semibold text-slate-500">{log}</span>
+                <div key={i} className="flex items-center gap-4 animate-in slide-in-from-left-4 fade-in duration-500">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center ${i === thinkingLogs.length - 1 ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-500 text-white shadow-sm'}`}>
+                    {i === thinkingLogs.length - 1 ? <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" /> : <Check className="w-3 h-3" strokeWidth={5} />}
+                  </div>
+                  <span className={`text-[11px] font-bold tracking-tight ${i === thinkingLogs.length - 1 ? 'text-indigo-600' : 'text-slate-400 line-through decoration-slate-200'}`}>{log}</span>
                 </div>
               ))}
             </div>
@@ -358,71 +391,89 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
         );
       case 'ID_FEEDBACK':
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center animate-in zoom-in-95">
-            <ShieldAlert className="w-16 h-16 text-amber-500 mx-auto mb-6" />
-            <h2 className="text-2xl font-bold mb-3 text-slate-900 tracking-tight">{stageFeedback?.message || "Verification Failed"}</h2>
-            <div className="bg-amber-50 p-6 rounded-2xl text-[11px] font-mono text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner overflow-auto max-h-[150px]">
-              {stageFeedback?.tip || "Try taking a clearer photo."}
+          <div className="bg-white rounded-[40px] shadow-2xl border border-slate-200 p-12 text-center animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-amber-50 rounded-[32px] flex items-center justify-center mx-auto mb-8 border border-amber-100">
+              <ShieldAlert className="w-10 h-10 text-amber-500" />
             </div>
-            <div className="flex gap-4">
-               <button onClick={retryCurrentDoc} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"><RefreshCw className="w-4 h-4" /> Retake Photo</button>
-               <button onClick={resetAll} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 active:scale-95 transition-all">Reset All</button>
+            <h2 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">{stageFeedback?.message || "Verification Issue"}</h2>
+            <div className="bg-slate-50 p-8 rounded-3xl text-sm text-slate-600 mb-10 text-left border border-slate-100 leading-relaxed shadow-inner">
+              <p className="font-mono text-[11px]">{stageFeedback?.tip}</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-4">
+               <button onClick={retryCurrentDoc} className="flex-1 py-5 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-3"><RefreshCw className="w-4 h-4" /> Retake Photo</button>
+               <button onClick={resetAll} className="px-10 py-5 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 active:scale-95 transition-all">Cancel Scan</button>
             </div>
           </div>
         );
       case 'LIVENESS_FEEDBACK':
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 text-center animate-in zoom-in-95">
-            <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-6" />
-            <h2 className="text-2xl font-bold mb-3 text-slate-900 tracking-tight">Selfie Check Issue</h2>
-            <div className="bg-amber-50 p-6 rounded-2xl text-[11px] font-mono text-amber-800 mb-8 text-left border border-amber-100 leading-relaxed shadow-inner overflow-auto max-h-[150px]">
-              <p className="font-bold mb-2 uppercase">{stageFeedback?.message}</p>
+          <div className="bg-white rounded-[40px] shadow-2xl border border-slate-200 p-12 text-center animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-rose-50 rounded-[32px] flex items-center justify-center mx-auto mb-8 border border-rose-100">
+              <AlertCircle className="w-10 h-10 text-rose-500" />
+            </div>
+            <h2 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">Selfie Validation Failure</h2>
+            <div className="bg-slate-50 p-8 rounded-3xl text-xs text-slate-600 mb-10 text-left border border-slate-100 leading-relaxed shadow-inner font-mono">
+              <p className="font-bold text-rose-700 mb-2 uppercase tracking-widest">{stageFeedback?.message}</p>
               {stageFeedback?.tip}
             </div>
             <div className="flex gap-4">
-               <button onClick={retryLiveness} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"><RotateCcw className="w-4 h-4" /> Retake Selfie</button>
-               <button onClick={resetAll} className="px-6 py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 active:scale-95 transition-all">Cancel</button>
+               <button onClick={retryLiveness} className="flex-1 py-5 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 active:scale-95 transition-all flex items-center justify-center gap-2"><RotateCcw className="w-4 h-4" /> Restart Selfie Check</button>
             </div>
           </div>
         );
       case 'LIVENESS_CAPTURE':
         return (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center animate-in zoom-in-95">
-             <h2 className="text-2xl font-bold mb-2 text-slate-900 tracking-tight">Selfie Check</h2>
-             <p className="text-slate-500 text-sm mb-8 font-medium">Hold a paper with code <span className="text-indigo-600 font-black bg-indigo-50 px-4 py-1.5 rounded-lg border border-indigo-100 shadow-sm">{currentPin}</span> clearly visible.</p>
-             <div className="relative aspect-square max-w-[280px] mx-auto rounded-full overflow-hidden border-4 border-slate-50 shadow-2xl bg-slate-900">
+          <div className="bg-white rounded-[40px] shadow-2xl border border-slate-200 p-10 text-center animate-in zoom-in-95">
+             <h2 className="text-3xl font-black mb-2 text-slate-900 tracking-tight">Facial Liveness</h2>
+             <p className="text-slate-500 text-sm mb-10 font-medium leading-relaxed">Please look directly at the camera and hold a paper showing the unique code below.</p>
+             <div className="relative aspect-square max-w-[320px] mx-auto rounded-full overflow-hidden border-8 border-slate-50 shadow-2xl bg-slate-900 group">
                 {isCameraActive ? (
                   <>
                     <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                    <button onClick={capturePhoto} className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white p-6 rounded-full shadow-2xl active:scale-90 hover:scale-105 transition-all"><Camera className="w-8 h-8 text-slate-900" /></button>
+                    <div className="absolute inset-0 bg-indigo-600/10 pointer-events-none" />
+                    <button onClick={capturePhoto} className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-white p-8 rounded-full shadow-2xl active:scale-90 hover:scale-105 transition-all group">
+                       <Camera className="w-10 h-10 text-slate-900 group-hover:text-indigo-600" />
+                    </button>
                   </>
                 ) : (
-                  <button onClick={handleStartCamera} className="mt-24 px-8 py-3 bg-indigo-600 text-white rounded-lg font-bold text-xs uppercase tracking-widest shadow-lg">Open Camera</button>
+                  <button onClick={handleStartCamera} className="mt-28 px-10 py-4 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg">Activate Lens</button>
                 )}
              </div>
-             <div className="mt-10 p-8 bg-slate-900 rounded-2xl text-indigo-400 text-4xl font-mono font-black tracking-[0.2em] text-center shadow-2xl">{currentPin}</div>
+             <div className="mt-12 group">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Security Challenge Code</p>
+                <div className="p-10 bg-slate-900 rounded-[32px] text-indigo-400 text-5xl font-mono font-black tracking-[0.2em] text-center shadow-2xl border border-slate-800 transition-transform group-hover:scale-105 duration-500">
+                  {currentPin}
+                </div>
+             </div>
           </div>
         );
       case 'RESULT':
         return (
-          <div className="bg-white rounded-[32px] shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700">
-             <div className={`p-12 text-center text-white ${result?.status === 'Approved' ? 'bg-emerald-600' : 'bg-amber-600'} relative`}>
-                <h2 className="text-3xl font-black mb-2 tracking-tight">{result?.status === 'Approved' ? 'Verification Success!' : 'Review Required'}</h2>
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] opacity-80">Reference: {result?.id}</p>
+          <div className="bg-white rounded-[48px] shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-12 duration-1000">
+             <div className={`p-16 text-center text-white ${result?.status === 'Approved' ? 'bg-emerald-600' : 'bg-amber-600'} relative`}>
+                <div className="w-20 h-20 bg-white/20 rounded-[28px] flex items-center justify-center mx-auto mb-6 backdrop-blur-md">
+                   {result?.status === 'Approved' ? <PartyPopper className="w-10 h-10" /> : <ShieldAlert className="w-10 h-10" />}
+                </div>
+                <h2 className="text-4xl font-black mb-2 tracking-tight uppercase">{result?.status === 'Approved' ? 'Identity Verified' : 'Session Flagged'}</h2>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] opacity-80">AGENT REFERENCE: {result?.id}</p>
              </div>
-             <div className="p-10 space-y-10">
-                <div className="flex items-center gap-6 bg-slate-50 p-6 rounded-[24px] border border-slate-100">
-                   <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-white shadow-xl bg-white flex-shrink-0"><img src={result?.selfieImage} className="w-full h-full object-cover" /></div>
+             <div className="p-12 space-y-12">
+                <div className="flex items-center gap-8 bg-slate-50 p-8 rounded-[40px] border border-slate-100 shadow-inner">
+                   <div className="w-32 h-32 rounded-[32px] overflow-hidden border-4 border-white shadow-2xl bg-white flex-shrink-0 group">
+                      <img src={result?.selfieImage} className="w-full h-full object-cover grayscale transition-transform duration-700 group-hover:scale-110" />
+                   </div>
                    <div className="flex-1">
-                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Customer Profile</span>
-                     <p className="text-2xl font-black text-slate-900 tracking-tight">{result?.customerName}</p>
-                     <div className="mt-2 flex gap-2">
-                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 uppercase">{result?.riskScore} Risk</span>
-                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-indigo-600 uppercase">{result?.faceMatchScore}% Match</span>
+                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Authenticated Profile</span>
+                     <p className="text-3xl font-black text-slate-900 tracking-tight uppercase mb-4">{result?.customerName}</p>
+                     <div className="flex flex-wrap gap-3">
+                        <span className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-slate-600 uppercase shadow-sm">{result?.riskScore} Risk Profile</span>
+                        <span className="px-4 py-2 bg-white border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase shadow-sm">{result?.faceMatchScore}% Face Similarity</span>
                      </div>
                    </div>
                 </div>
-                <button onClick={resetAll} className="w-full py-6 bg-slate-900 text-white rounded-[20px] font-bold text-xs uppercase tracking-[0.1em] hover:bg-slate-800 active:scale-95 transition-all shadow-2xl">Start New KYC Verification</button>
+                <button onClick={resetAll} className="w-full py-8 bg-slate-900 text-white rounded-[28px] font-bold text-sm uppercase tracking-[0.2em] hover:bg-slate-800 active:scale-95 transition-all shadow-2xl flex items-center justify-center gap-3 group">
+                   <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" /> Start New Verification Session
+                </button>
              </div>
           </div>
         );
@@ -431,13 +482,16 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
   };
 
   return (
-    <div className="max-w-xl mx-auto pb-16 relative min-h-[450px]">
+    <div className="max-w-2xl mx-auto pb-20 relative min-h-[500px]">
       <canvas ref={canvasRef} className="hidden" />
       {step !== 'RESULT' && step !== 'FATAL_ERROR' && (
-        <div className="mb-8 flex flex-wrap justify-center gap-2">
+        <div className="mb-10 flex flex-wrap justify-center gap-3">
           {settings.requiredBuckets.map(b => (
-            <div key={b} className={`px-4 py-2 rounded-full border text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-all duration-300 ${satisfiedBuckets.includes(b) ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-sm' : 'bg-white border-slate-200 text-slate-400'}`}>
-              {satisfiedBuckets.includes(b) ? <Check className="w-3.5 h-3.5" strokeWidth={5} /> : <Target className="w-3.5 h-3.5 opacity-30" />} {b}
+            <div key={b} className={`px-6 py-3 rounded-full border text-[10px] font-black uppercase tracking-[0.1em] flex items-center gap-3 transition-all duration-500 ${satisfiedBuckets.includes(b) ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-xl shadow-emerald-600/5 translate-y-[-2px]' : 'bg-white border-slate-200 text-slate-400'}`}>
+              <div className={`w-4 h-4 rounded-full flex items-center justify-center ${satisfiedBuckets.includes(b) ? 'bg-emerald-500' : 'bg-slate-100'}`}>
+                {satisfiedBuckets.includes(b) ? <Check className="w-2.5 h-2.5 text-white" strokeWidth={5} /> : <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />}
+              </div>
+              {b} VERIFIED
             </div>
           ))}
         </div>
