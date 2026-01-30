@@ -68,9 +68,12 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const timer = setInterval(() => {
         setRetryTimer(prev => (prev > 0 ? prev - 1 : 0));
       }, 1000);
-      return () => clearInterval(timer);
+      return () => {
+        clearInterval(timer);
+        if (retryTimer === 0) setStep('DOC_SELECT');
+      };
     }
-  }, [step]);
+  }, [step, retryTimer]);
 
   useEffect(() => {
     let active = true;
@@ -220,7 +223,6 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       
       setCapturedImages(prev => ({ ...prev, [selectedDocType!]: { front, back } }));
       
-      // Filter out technical/internal fields for document display
       const displayableExtracted = { ...data };
       delete displayableExtracted.status;
       delete displayableExtracted.feedback;
@@ -296,21 +298,20 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Auto-rejection logic: Score < 75 (slightly higher threshold for agentic trust)
       if (data.faceMatchScore < 75 || !data.gestureMatched) {
         setStageFeedback({ 
           message: data.faceMatchScore < 75 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
           tip: data.reasoning || "System detected a significant discrepancy. Ensure you are using your own current document and performing the correct gesture.", 
-          isRetryable: data.faceMatchScore >= 50 // Only allow retry if it's not a complete mismatch
+          isRetryable: data.faceMatchScore >= 50 
         });
         setStep('LIVENESS_FEEDBACK');
-        if (data.faceMatchScore < 70) finalize(data); // Immediate finalize for high risk
+        if (data.faceMatchScore < 70) finalize(data, selfie);
         return;
       }
 
       if (data.gestureMatched && data.faceMatchScore >= 75) {
         setStep('LIVENESS_SUCCESS');
-        setTimeout(() => finalize(data), 1000);
+        setTimeout(() => finalize(data, selfie), 1000);
       } else {
         setStageFeedback({ 
           message: "Verification Issue", 
@@ -322,11 +323,10 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     } catch (err) { handleError(err); }
   };
 
-  const finalize = (aiData: any) => {
+  const finalize = (aiData: any, selfie: string) => {
     const score = aiData.faceMatchScore;
     const gestureOk = aiData.gestureMatched;
     
-    // Automatic Decision Logic
     let status: VerificationStatus = 'Flagged'; 
     
     if (score > 90 && gestureOk && mismatches.length === 0) {
@@ -347,7 +347,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       nationality: globalProfile.nationality,
       documents: documentDetailsMap,
       idImages: capturedImages,
-      selfieImage: selfieImage!,
+      selfieImage: selfie, // Using direct selfie string to avoid async state issues
       performedGesture: currentGesture.label,
       rejectionReason: aiData.reasoning,
       faceMatchScore: score,
@@ -379,7 +379,8 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
             <div className="w-24 h-24 bg-indigo-50 rounded-[40px] flex items-center justify-center mx-auto mb-10 shadow-inner">
               <Clock className="w-12 h-12 text-indigo-600 animate-pulse" />
             </div>
-            <h2 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">System Cooling Down</h2>
+            <h2 className="text-3xl font-black mb-4 text-slate-900 tracking-tight">Gemini API Rate Limit</h2>
+            <p className="text-slate-500 text-sm mb-8 font-medium">Your request limit for the Gemini API has been reached. The system will automatically resume shortly.</p>
             <div className="relative w-24 h-24 mx-auto mb-8">
                <svg className="w-full h-full" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="45" fill="none" stroke="#f1f5f9" strokeWidth="8" />
@@ -390,6 +391,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
                   <span className="text-[8px] font-black uppercase text-slate-400">Seconds</span>
                </div>
             </div>
+            <button onClick={() => setStep('DOC_SELECT')} className="px-6 py-2 text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline">Dismiss</button>
           </div>
         );
       case 'DOC_SELECT':
