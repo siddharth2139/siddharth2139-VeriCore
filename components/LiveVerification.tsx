@@ -275,8 +275,9 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
             { text: `IDENTITY CHALLENGE:
             1. Match face in ID with face in Selfie.
             2. Verify Liveness: Is the user performing the gesture '${currentGesture.label}'?
-            3. ANALYSIS: Return a faceMatchScore from 0 to 100 (where 100 is identical). If the score is low (<80), explain why (e.g. 'Old document image', 'Poor lighting', 'No facial similarity'). 
-            4. If the gesture is incorrect, state what was seen instead.` }
+            3. ANALYSIS: Return a faceMatchScore as an INTEGER between 0 and 100 (where 100 is identical). DO NOT return decimals or percentages like 0.88. Return 88 instead.
+            4. If the gesture is correct, provide a high score and positive reasoning. 
+            5. Return valid JSON.` }
           ]
         },
         config: {
@@ -298,33 +299,32 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       const data = JSON.parse(response.text.trim() || '{}');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // Fix: Normalize score (if model returns 0.90 instead of 90)
-      let normalizedScore = data.faceMatchScore;
-      if (normalizedScore > 0 && normalizedScore <= 1.0) {
-        normalizedScore = normalizedScore * 100;
+      // Fix: Force Score to be an integer 0-100.
+      let finalScore = data.faceMatchScore;
+      if (finalScore > 0 && finalScore <= 1.0) {
+        finalScore = Math.round(finalScore * 100);
+      } else {
+        finalScore = Math.round(finalScore);
       }
-      data.faceMatchScore = Math.round(normalizedScore);
+      data.faceMatchScore = finalScore;
 
-      if (data.faceMatchScore < 70 || !data.gestureMatched) {
+      // Logic: Threshold lowered to 60 for retry, 80 for auto-pass
+      if (data.faceMatchScore < 60 || !data.gestureMatched) {
         setStageFeedback({ 
-          message: data.faceMatchScore < 70 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
+          message: data.faceMatchScore < 60 ? "Identity Mismatch Detected" : "Liveness Check Failed", 
           tip: data.reasoning || "System detected a significant discrepancy. Ensure you are using your own current document and performing the correct gesture.", 
-          isRetryable: data.faceMatchScore >= 50 
+          isRetryable: data.faceMatchScore >= 30 
         });
         setStep('LIVENESS_FEEDBACK');
-        if (data.faceMatchScore < 50) finalize(data, selfie); // Immediate rejection if extremely low
+        if (data.faceMatchScore < 30) finalize(data, selfie); 
         return;
       }
 
-      if (data.gestureMatched && data.faceMatchScore >= 70) {
+      if (data.gestureMatched && data.faceMatchScore >= 60) {
         setStep('LIVENESS_SUCCESS');
         setTimeout(() => finalize(data, selfie), 1000);
       } else {
-        setStageFeedback({ 
-          message: "Verification Issue", 
-          tip: data.reasoning, 
-          isRetryable: true 
-        });
+        setStageFeedback({ message: "Verification Issue", tip: data.reasoning, isRetryable: true });
         setStep('LIVENESS_FEEDBACK');
       }
     } catch (err) { handleError(err); }
@@ -336,11 +336,10 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
     
     let status: VerificationStatus = 'Flagged'; 
     
-    // Logic Fix: Ensure high match (>= 75) + gesture = Approval or Flag for review.
-    // Manual review is for 70-90. Auto approval for > 90.
-    if (score > 90 && gestureOk) {
+    // Logic: Threshold lowered to 80 for auto-approval
+    if (score >= 80 && gestureOk) {
       status = 'Approved'; 
-    } else if (score < 70) {
+    } else if (score < 60) {
       status = 'Rejected'; 
     } else {
       status = 'Flagged';
@@ -364,7 +363,7 @@ export const LiveVerification: React.FC<LiveVerificationProps> = ({ onComplete, 
       faceMatchScore: score,
       gestureMatch: gestureOk,
       status: status,
-      riskScore: score < 70 ? 'High' : score > 90 ? 'Low' : 'Med',
+      riskScore: score < 60 ? 'High' : score >= 85 ? 'Low' : 'Med',
       bucketsSatisfied: satisfiedBuckets,
       mismatches: mismatches,
       activity: [
